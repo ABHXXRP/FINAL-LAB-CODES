@@ -1,0 +1,320 @@
+QUESTION 1
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+
+#define MAX_LINE_LENGTH 100
+
+int isfloatvalid(const char *inputstr);
+void filecheck(const char *inputFileName, const char *outputFileName);
+
+int main() {
+    const char *file_inputted = "data.txt"; //your source file consisting the string values
+    const char *output_file = "valid_str_floats.txt"; //result file containing only the valid float values
+
+    // Process the file
+    filecheck(file_inputted, output_file);
+
+    return 0;
+}
+
+
+int isfloatvalid(const char *inputstr) {
+    char *endpointer;
+    strtod(inputstr, &endpointer); //this function converts a string to a double
+    return *endpointer == '\0'; //if the endpointer is a null terminator the entire string is a valid float
+}
+
+
+
+void filecheck(const char *file_inputted, const char *output_file) {//this function processes and checks the file
+    FILE *inputpointer, *outputpointer; //pointers of the input and output files
+    char inputline[MAX_LINE_LENGTH]; //A buffer to store a line of text from the file
+    int invalidCounts = 0; // this counter counts the invalid float values
+
+
+    inputpointer = fopen(file_inputted, "r");// opens the file for reading the values
+    if (inputpointer == NULL) {
+        perror("The input file cannot be opened"); // if the file pointer is NULL the file wont be opened and returns a NULL value
+        return;
+    }
+
+    outputpointer = fopen(output_file, "w");// opens the output file in write mode
+    if (outputpointer == NULL) {
+        perror("The output file cannot be opened"); //if file pointer is NULL the file cannot be opened
+        fclose(inputpointer); //Hence the file is closed
+        return;
+    }
+
+
+    while (fgets(inputline, MAX_LINE_LENGTH, inputpointer)) { // Reads a single line from the input file into inputline.
+        // Remove trailing newline character if present
+        char *newlineposition = strchr(inputline, '\n'); //strchr searches for a newline character in the buffer
+        if (newlineposition) *newlineposition = '\0'; // Replaces the newline with a null character ('\0'), terminating the string.
+
+       
+        if (isfloatvalid(inputline)) { // checks if the line in the buffer is a float
+            fprintf(outputpointer, "%s\n", inputline);
+        } else {
+            invalidCounts++; 
+        }
+
+        //fseek ensures there is no hardware failure
+        if (fseek(inputpointer, 0, SEEK_CUR) != 0) {
+            perror("Error during file processing"); // in case an issue is detected error message is printed and exits the loop
+            break;
+        }
+    }
+
+
+    fclose(inputpointer); // Both the files are closed
+    fclose(outputpointer);
+
+    // Print the number of invalid float values found
+    printf("Number of invalid float values: %d\n", invalidCounts);
+}
+
+
+
+
+
+
+QUESTION 2
+
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef unsigned char uchar;  // Defining a type alias for unsigned char as uchar
+
+// Function prototypes
+int readPGMText(const char* filename, int* width, int* height, int* maxval, uchar** pixels);
+int writePGMText(const char* filename, int width, int height, int maxval, uchar* pixels);
+int writePGMBinary(const char* filename, int width, int height, int maxval, uchar* pixels);
+void embedLSB(int width, int height, uchar* coverPixels, uchar* secretPixels, uchar** stegoPixels);
+void extractLSB(int width, int height, uchar* stegoPixels, uchar** outputPixels);
+
+int main() {
+    int width, height, maxval;
+    uchar *coverPixels = NULL, *secretPixels = NULL, *stegoPixels = NULL, *outputPixels = NULL;
+
+    // Reading the cover image
+    if (readPGMText("C:/Users/misle/Downloads/Lab4_Q2/baboon.pgm", &width, &height, &maxval, &coverPixels) != 0) {
+        printf("Failed to read cover image.\n");
+        return 1;
+    }
+
+    // Reading the secret image
+    if (readPGMText("C:/Users/misle/Downloads/Lab4_Q2/farm.pgm", &width, &height, &maxval, &secretPixels) != 0) {
+        printf("Failed to read secret image.\n");
+        free(coverPixels);  // Freeing memory for cover image in case of failure
+        return 1;
+    }
+
+    // Ensuring that the dimensions match for both cover and secret images
+    if (width != height) {
+        printf("Error: Image dimensions do not match.\n");
+        free(coverPixels);  // Freeing memory in case of error
+        free(secretPixels); 
+        return 1;
+    }
+
+    // Embedding the secret image into the cover image using LSB steganography
+    embedLSB(width, height, coverPixels, secretPixels, &stegoPixels);
+
+    // Writing the stego image (image with embedded secret) to a binary PGM file
+    if (writePGMBinary("C:/Users/misle/Downloads/Lab4_Q2/stego_image_bin.pgm", width, height, maxval, stegoPixels) != 0) {
+        printf("Failed to write stego image.\n");
+        free(coverPixels);
+        free(secretPixels);
+        free(stegoPixels);  // Freeing memory in case of failure
+        return 1;
+    }
+
+    // Extracting the secret image from the stego image
+    extractLSB(width, height, stegoPixels, &outputPixels);
+
+    // Writing the extracted secret image to a text PGM file
+    if (writePGMText("C:/Users/misle/Downloads/Lab4_Q2/extracted_secret.pgm", width, height, maxval, outputPixels) != 0) {
+        printf("Failed to write extracted secret image.\n");
+    }
+
+    // Freeing all allocated memory after processing
+    free(coverPixels);
+    free(secretPixels);
+    free(stegoPixels);
+    free(outputPixels);
+
+    return 0;
+}
+
+// Function to read a PGM image in text format (P2)
+int readPGMText(const char* filename, int* width, int* height, int* maxval, uchar** pixels) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        printf("Error: cannot open file %s\n", filename);
+        return 1;
+    }
+
+    // Read the PGM header
+    char buffer[16];
+    if (!fgets(buffer, sizeof(buffer), file)) {
+        fclose(file);
+        return 1;
+    }
+
+    // Checking if the format is P2 (text-based PGM format)
+    if (buffer[0] != 'P' || buffer[1] != '2') {
+        printf("Error: invalid file format (must be 'P2').\n");
+        fclose(file);
+        return 1;
+    }
+
+    // Skip over comment lines
+    do {
+        fgets(buffer, sizeof(buffer), file);
+    } while (buffer[0] == '#');
+
+    // Read the image width, height, and maximum pixel value (maxval)
+    sscanf(buffer, "%d %d", width, height);
+    fscanf(file, "%d", maxval);
+
+    // Allocate memory for the pixel data
+    int size = (*width) * (*height);
+    pixels = (uchar) malloc(size * sizeof(uchar));
+    if (*pixels == NULL) {
+        printf("Error: failed to allocate memory.\n");
+        fclose(file);
+        return 1;
+    }
+
+    // Read pixel values from the file
+    for (int i = 0; i < size; i++) {
+        fscanf(file, "%hhu", (*pixels) + i);  // Reading each pixel as an unsigned char
+    }
+
+    fclose(file);
+    return 0;
+}
+
+// Function to write a PGM image in text format (P2)
+int writePGMText(const char* filename, int width, int height, int maxval, uchar* pixels) {
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        printf("Error: cannot open file %s\n", filename);
+        return 1;
+    }
+
+    // Write the PGM header
+    fprintf(file, "P2\n%d %d\n%d\n", width, height, maxval);
+
+    // Write pixel data to the file
+    int size = width * height;
+    for (int i = 0; i < size; i++) {
+        fprintf(file, "%d ", pixels[i]);
+        if (i % 17 == 0) fprintf(file, "\n");  // Adding newlines for readability
+    }
+
+    fclose(file);
+    return 0;
+}
+
+// Function to write a PGM image in binary format (P5)
+int writePGMBinary(const char* filename, int width, int height, int maxval, uchar* pixels) {
+    FILE *file = fopen(filename, "wb");
+    if (!file) {
+        printf("Error: cannot open file %s\n", filename);
+        return 1;
+    }
+
+    // Write the PGM header
+    fprintf(file, "P5\n%d %d\n%d\n", width, height, maxval);
+
+    // Write pixel data in binary format
+    int size = width * height;
+    fwrite(pixels, sizeof(uchar), size, file);
+
+    fclose(file);
+    return 0;
+}
+
+// Function to embed the secret image into the cover image using Least Significant Bit (LSB) steganography
+void embedLSB(int width, int height, uchar* coverPixels, uchar* secretPixels, uchar** stegoPixels) {
+    int size = width * height;
+    stegoPixels = (uchar) malloc(size * sizeof(uchar));  // Allocate memory for the stego image
+    if (*stegoPixels == NULL) {
+        printf("Error: failed to allocate memory for stego image.\n");
+        return;
+    }
+
+    for (int i = 0; i < size; i++) {
+        // Extract the 4 most significant bits (MSBs) from the cover image pixel
+        uchar coverMSB = coverPixels[i] & 0xF0;  
+        // Extract the 4 MSBs from the secret image pixel and shift them to the 4 least significant bits
+        uchar secretMSB = (secretPixels[i] & 0xF0) >> 4;  
+        // Combine the cover and secret MSBs into the stego pixel
+        (*stegoPixels)[i] = coverMSB | secretMSB;
+    }
+}
+
+// Function to extract the secret image from the stego image using LSB extraction
+void extractLSB(int width, int height, uchar* stegoPixels, uchar** outputPixels) {
+    int size = width * height;
+    outputPixels = (uchar) malloc(size * sizeof(uchar));  // Allocate memory for the extracted secret image
+    if (*outputPixels == NULL) {
+        printf("Error: failed to allocate memory for extracted secret image.\n");
+        return;
+    }
+
+    for (int i = 0; i < size; i++) {
+        // Extract the 4 least significant bits (LSBs) from the stego pixel and shift them to the most significant bits
+        uchar secretMSB = (stegoPixels[i] & 0x0F) << 4;  
+        (*outputPixels)[i] = secretMSB;  // Store the secret MSBs as the extracted secret pixel
+    }
+}
+
+
+
+QUESTION 3
+
+#include <iostream>
+#include <iomanip>
+using namespace std;
+
+// Function to print a floating-point number in fixed-point notation
+void print_real(float number, int fieldspace, int precision) {
+    cout << fixed << setw(fieldspace) << setprecision(precision) << number << endl;
+}
+
+// Template function to update the values of m1 and m2
+template <typename T>
+void update_scale(T &m1, T &m2, T m3 = 10) {
+    T initial_m1 = m1;
+    T initial_m2 = m2;
+
+    m1 = (initial_m1 + initial_m2) * m3; // Updates m1 by summing m1 and m2 and multiplying by m3
+    m2 = (initial_m1 - initial_m2) * m3; // Updates m2 by difference of m1 and m2 and multiplying by m3
+}
+
+int main() {
+    float a, b;
+    cout << "Please input two real numbers: ";
+    cin >> a >> b;
+
+    // Prints the initial values of a and b
+    cout << "Initial values are:\n";
+    print_real(a, 7, 3);
+    print_real(b, 7, 3);
+
+    // Calls the update_scale function that updates the values of a and b
+    update_scale(a, b);
+
+    // Updated values of a and b are printed
+    cout << "Updated values:\n";
+    print_real(a, 7, 3);
+    print_real(b, 7, 3);
+
+    return 0;
+}
